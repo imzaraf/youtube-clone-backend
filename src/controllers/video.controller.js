@@ -5,6 +5,8 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { Video } from "../models/video.model.js";
 import { DB_NAME } from "../constants.js";
 import mongoose, { connect, isValidObjectId } from "mongoose";
+import { validateObjectId } from "../utils/validateObjectId.js";
+import { checkOwnership } from "../utils/checkOwnerShip.js";
 
 // Mutation
 const uploadVideo = asyncHandler(async (req, res) => {
@@ -59,20 +61,16 @@ const uploadVideo = asyncHandler(async (req, res) => {
 const updateVideo = asyncHandler(async (req, res) => {
     const { videoId } = req.params;
     const { title, description } = req.body;
-    const files = req.files;
-    if (!isValidObjectId(videoId)) {
-        throw new ApiError(400, "Invalid videoId");
-    }
+
+    validateObjectId(videoId, "videoId");
+
     const video = await Video.findById(videoId);
     if (!video) {
         throw new ApiError(404, "No video Found");
     }
-    if (video?.owner.toString() !== req.user?._id.toString()) {
-        throw new ApiError(
-            404,
-            "You are the not owner of the user so you can't edit this video"
-        );
-    }
+
+    checkOwnership(video, req.user?._id, "update this video");
+
     const thumbnailToDelete = video.thumbnail?._id;
     const thumbnailLocalPath = req.file.path;
 
@@ -117,21 +115,14 @@ const updateVideo = asyncHandler(async (req, res) => {
 
 const deleteVideo = asyncHandler(async (req, res) => {
     const { videoId } = req.params;
+    validateObjectId(videoId, "videoId");
 
-    if (!isValidObjectId(videoId)) {
-        throw new ApiError(400, "Invalid videoId");
-    }
     const video = await Video.findById(videoId);
-
-    if (video?.owner.toString() !== req.user?._id.toString()) {
-        throw new ApiError(
-            400,
-            "You can't delete this video as you are not the owner"
-        );
-    }
     if (!video) {
         throw new ApiError(404, "Video not found");
     }
+    checkOwnership(video, req.user?._id, "delete video");
+
     const deleteVideo = await Video.findByIdAndDelete(videoId);
     if (!deleteVideo) {
         throw new ApiError(500, "Error while deleting video please try again");
@@ -146,6 +137,12 @@ const getVideoById = asyncHandler(async (req, res) => {
     const { videoId } = req.params;
     // 1- Match the Video by ID:
     // 2-
+
+    await Video.findByIdAndUpdate(
+        videoId,
+        { $inc: { views: 1 } }, // Increment the 'views' field by 1
+        { new: true } // Return the updated document
+    );
 
     const video = await Video.aggregate([
         {
@@ -284,8 +281,7 @@ const getVideoById = asyncHandler(async (req, res) => {
     if (!video) {
         throw new ApiError(404, "Video not found");
     }
-    // video.views += 1;
-    // await video.save();
+
     return res
         .status(200)
         .json(new ApiResponse(200, video[0], "Video fetched successfully"));
@@ -368,22 +364,14 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
 const togglePublishStatus = asyncHandler(async (req, res) => {
     const { videoId } = req.params;
-    if (!isValidObjectId(videoId)) {
-        throw new ApiError(400, "Invalid videoId");
-    }
-
+    validateObjectId(videoId, "videoId");
     const video = await Video.findById(videoId);
 
     if (!video) {
         throw new ApiError(404, "Video not found");
     }
 
-    if (video?.owner.toString() !== req.user?._id.toString()) {
-        throw new ApiError(
-            400,
-            "You can't toogle publish status as you are not the owner"
-        );
-    }
+    checkOwnership(video, req.user?._id, "toggle video status");
 
     const toggledVideoPublish = await Video.findByIdAndUpdate(
         videoId,
@@ -396,7 +384,7 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
     );
 
     if (!toggledVideoPublish) {
-        throw new ApiError(500, "Failed to toogle video publish status");
+        throw new ApiError(500, "Failed to toggle video publish status");
     }
     return res
         .status(200)

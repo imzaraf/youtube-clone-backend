@@ -353,7 +353,6 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
             new: true,
         }
     ).select("-password");
-    //  TODO: Delete previous avatar after updating it
     return res
         .status(200)
         .json(new ApiResponse(200, {}, "Avatar Updated Successfully"));

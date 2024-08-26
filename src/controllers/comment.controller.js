@@ -4,9 +4,9 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { Video } from "../models/video.model.js";
+import { validateObjectId } from "../utils/validateObjectId.js";
 
 const getVideoComments = asyncHandler(async (req, res) => {
-    //TODO: get all comments for a video
     const { videoId } = req.params;
     const { page = 1, limit = 10 } = req.query;
     let skip = (page - 1) * limit;
@@ -52,8 +52,9 @@ const getVideoComments = asyncHandler(async (req, res) => {
                 },
             },
         },
-        { $limit: parseInt(limit) },
+        { $sort: { createdAt: -1 } },
         { $skip: skip },
+        { $limit: parseInt(limit) },
         {
             $project: {
                 userDetails: 1,
@@ -106,11 +107,53 @@ const addComment = asyncHandler(async (req, res) => {
 });
 
 const updateComment = asyncHandler(async (req, res) => {
-    // TODO: update a comment
+    const { commentId } = req.params;
+    const { content } = req.body;
+
+    validateObjectId(commentId, "commentId");
+
+    if (!content) {
+        throw new ApiError(400, "Content is required");
+    }
+
+    const comment = await Comment.findById(commentId);
+    if (!comment) {
+        throw new ApiError(404, "No comment found");
+    }
+
+    checkOwnership(comment, req.user?._id, "update comment");
+
+    const updatedComment = await Comment.findByIdAndUpdate(
+        commentId,
+        {
+            content,
+        },
+        { new: true } // to return new document instead of old
+    );
+
+    return res
+        .status(201)
+        .json(
+            new ApiResponse(201, updatedComment, "Comment updated successfully")
+        );
 });
 
 const deleteComment = asyncHandler(async (req, res) => {
-    // TODO: delete a comment
+    const { commentId } = req.params;
+    validateObjectId(commentId, "commentId");
+
+    const comment = await Comment.findById(commentId);
+    if (!comment) {
+        throw new ApiError(404, "No comment found");
+    }
+    checkOwnership(comment, req.user?._id, "delete this comment");
+    const deletedComment = await Comment.findByIdAndDelete(commentId);
+
+    return res
+        .status(200)
+        .json(
+            new ApiResponse(200, deletedComment, "Comment deleted successfully")
+        );
 });
 
 export { getVideoComments, addComment, updateComment, deleteComment };
